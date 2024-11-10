@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apartment Maintenance Request System</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background-color: #fafafa;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+    }
+
+    h2 {
+      color: #4CAF50;
+      margin-bottom: 10px;
+    }
+
+    .section {
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px;
+      width: 100%;
+      max-width: 400px;
+      background-color: white;
+      box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    input, textarea, button {
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #ddd;
+      box-sizing: border-box;
+    }
+
+    textarea {
+      resize: vertical;
+      height: 120px;
+    }
+
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+
+    .loading {
+      color: #888;
+      font-size: 1em;
+      margin-top: 10px;
+    }
+
+    #requestsOutput, #tenantsOutput {
+      white-space: pre-wrap;
+      background-color: #f9f9f9;
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #ddd;
+      max-height: 300px;
+      overflow-y: auto;
+      font-size: 0.9em;
+      margin-top: 10px;
+    }
+
+    .filter-inputs input {
+      margin-bottom: 10px;
+    }
+
+    .section h3 {
+      color: #333;
+      margin-top: 20px;
+    }
+
+    .btn-container {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .btn-container button {
+      width: 48%;
+    }
+
+    /* Responsive Design */
+    @media (max-width: 600px) {
+      .section {
+        width: 100%;
+      }
+
+      .btn-container {
+        flex-direction: column;
+      }
+
+      .btn-container button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Maintenance Request System</h1>
+
+  <!-- Tenant form for submitting maintenance requests -->
+  <div class="section" id="tenant-section">
+    <h2>Submit Maintenance Request</h2>
+    <input id="apartmentNumber" placeholder="Apartment Number" required />
+    <input id="area" placeholder="Problem Area" required />
+    <textarea id="description" placeholder="Problem Description" required></textarea>
+    <input type="file" id="photo" />
+    <button id="submitRequestBtn">Submit Request</button>
+  </div>
+
+  <!-- Staff section to view requests -->
+  <div class="section" id="staff-section">
+    <h2>View Requests</h2>
+    <div class="filter-inputs">
+      <input type="text" id="filterApartmentNumber" placeholder="Apartment Number">
+      <input type="text" id="filterArea" placeholder="Problem Area">
+      <label for="filterDateFrom">From:</label>
+      <input type="date" id="filterDateFrom">
+      <label for="filterDateTo">To:</label>
+      <input type="date" id="filterDateTo">
+    </div>
+    <button id="fetchRequestsBtn">Fetch Requests</button>
+    <div class="loading" id="loadingIndicator" style="display: none;">Loading...</div>
+    <pre id="requestsOutput"></pre>
+  </div>
+
+  <!-- Manager section -->
+  <div class="section" id="manager-section">
+    <h2>Manage Tenants</h2>
+    <h3>Add Tenant</h3>
+    <input id="tenantName" placeholder="Tenant Name" required />
+    <input id="tenantPhone" placeholder="Phone Number" required />
+    <input id="tenantEmail" placeholder="Email" required />
+    <input id="tenantApartment" placeholder="Apartment Number" required />
+    <button id="addTenantBtn">Add Tenant</button>
+
+    <h3>Move Tenant</h3>
+    <input id="tenantIdToMove" placeholder="Tenant ID" required />
+    <input id="newApartmentNumber" placeholder="New Apartment Number" required />
+    <button id="moveTenantBtn">Move Tenant</button>
+
+    <h3>Delete Tenant</h3>
+    <input id="tenantIdToDelete" placeholder="Tenant ID" required />
+    <button id="deleteTenantBtn">Delete Tenant</button>
+
+    <h3>View Tenants</h3>
+    <button id="fetchTenantsBtn">Fetch Tenants</button>
+    <pre id="tenantsOutput"></pre>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
+    // Firebase configuration with specific values
+    const firebaseConfig = {
+      apiKey: "AIzaSyAI_pNc2G8XVrQICqJFQcvVgPeZnI3dX9E",
+      authDomain: "webappprojecttwo.firebaseapp.com",
+      projectId: "webappprojecttwo",
+      storageBucket: "webappprojecttwo.firebaseapp.com",
+      messagingSenderId: "405180005005",
+      appId: "1:405180005005:web:045d252793a8ae9c7b80c4"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // Submit a maintenance request
+    async function submitRequest() {
+      const apartmentNumber = document.getElementById("apartmentNumber").value;
+      const area = document.getElementById("area").value;
+      const description = document.getElementById("description").value;
+      const photo = document.getElementById("photo").files[0];
+
+      try {
+        // Save maintenance request with status as 'pending'
+        const docRef = await addDoc(collection(db, "maintenance_requests"), {
+          apartmentNumber,
+          area,
+          description,
+          status: "pending",  // Default status
+          dateSubmitted: serverTimestamp() // Server timestamp
+        });
+
+        alert("Request submitted successfully.");
+      } catch (error) {
+        console.error("Error submitting request:", error.message);
+      }
+    }
+
+    // Fetch maintenance requests
+    async function fetchRequests() {
+      const output = document.getElementById("requestsOutput");
+      output.innerHTML = "";
+      document.getElementById("loadingIndicator").style.display = "block";
+
+      const apartmentNumber = document.getElementById("filterApartmentNumber").value.trim();
+      const area = document.getElementById("filterArea").value.trim();
+      const dateFrom = document.getElementById("filterDateFrom").value.trim();
+      const dateTo = document.getElementById("filterDateTo").value.trim();
+
+      let q = query(collection(db, "maintenance_requests"));
+
+      if (apartmentNumber) {
+        q = query(q, where("apartmentNumber", "==", apartmentNumber));
+      }
+
+      if (area) {
+        q = query(q, where("area", "==", area));
+      }
+
+      if (dateFrom && dateTo) {
+        q = query(q, where("dateSubmitted", ">=", new Date(dateFrom)), where("dateSubmitted", "<=", new Date(dateTo)));
+      }
+
+      try {
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach(doc => {
+          const data = doc.data();
+          const formattedDate = data.dateSubmitted ? formatTimestamp(data.dateSubmitted) : 'N/A';
+          output.innerHTML += `Request ID: ${doc.id}\nApartment: ${data.apartmentNumber}\nArea: ${data.area}\nDescription: ${data.description}\nStatus: ${data.status}\nDate Submitted: ${formattedDate}\n`;
+
+          // Add a button to update status if request is pending
+          if (data.status === "pending") {
+            output.innerHTML += `<button class="mark-complete" data-id="${doc.id}">Mark as Complete</button>\n\n`;
+          }
+        });
+
+        document.getElementById("loadingIndicator").style.display = "none";
+      } catch (error) {
+        console.error("Error fetching requests:", error.message);
+        document.getElementById("loadingIndicator").style.display = "none";
+      }
+    }
+
+    // Format timestamp to human-readable date
+    function formatTimestamp(timestamp) {
+      const date = new Date(timestamp.seconds * 1000);
+      return date.toLocaleString();
+    }
+
+    // Update request status to 'complete'
+    async function markRequestComplete(requestId) {
+      try {
+        const requestRef = doc(db, "maintenance_requests", requestId);
+        await updateDoc(requestRef, {
+          status: "complete"
+        });
+        alert("Request marked as complete.");
+        fetchRequests(); // Refresh the list
+      } catch (error) {
+        console.error("Error updating request status:", error.message);
+      }
+    }
+
+    // Fetch tenants
+    async function fetchTenants() {
+  const output = document.getElementById("tenantsOutput");
+  output.innerHTML = ""; // Clear existing content
+  try {
+    const querySnapshot = await getDocs(collection(db, "tenants"));
+    querySnapshot.forEach(doc => {
+      const data = doc.data();
+      output.innerHTML += `
+        <div style="margin-bottom: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
+          Tenant ID: ${doc.id}<br>
+          Name: ${data.name}<br>
+          Phone: ${data.phone}<br>
+          Email: ${data.email}<br>
+          Apartment: ${data.apartment}
+        </div>`;
+    });
+  } catch (error) {
+    console.error("Error fetching tenants:", error.message);
+  }
+}
+
+
+
+    // Add a tenant to the database
+    async function addTenant() {
+      const name = document.getElementById("tenantName").value;
+      const phone = document.getElementById("tenantPhone").value;
+      const email = document.getElementById("tenantEmail").value;
+      const apartment = document.getElementById("tenantApartment").value;
+
+      try {
+        await addDoc(collection(db, "tenants"), {
+          name,
+          phone,
+          email,
+          apartment
+        });
+        alert("Tenant added successfully.");
+      } catch (error) {
+        console.error("Error adding tenant:", error.message);
+      }
+    }
+
+    // Move a tenant to a new apartment
+    async function moveTenant() {
+      const tenantId = document.getElementById("tenantIdToMove").value;
+      const newApartmentNumber = document.getElementById("newApartmentNumber").value;
+
+      try {
+        const tenantRef = doc(db, "tenants", tenantId);
+        await updateDoc(tenantRef, {
+          apartment: newApartmentNumber
+        });
+        alert("Tenant moved successfully.");
+      } catch (error) {
+        console.error("Error moving tenant:", error.message);
+      }
+    }
+
+    // Delete a tenant from the database
+    async function deleteTenant() {
+      const tenantId = document.getElementById("tenantIdToDelete").value;
+
+      try {
+        await deleteDoc(doc(db, "tenants", tenantId));
+        alert("Tenant deleted successfully.");
+      } catch (error) {
+        console.error("Error deleting tenant:", error.message);
+      }
+    }
+
+    // Event Listeners
+    document.getElementById("submitRequestBtn").addEventListener("click", submitRequest);
+    document.getElementById("fetchRequestsBtn").addEventListener("click", fetchRequests);
+    document.getElementById("fetchTenantsBtn").addEventListener("click", fetchTenants);
+    document.getElementById("addTenantBtn").addEventListener("click", addTenant);
+    document.getElementById("moveTenantBtn").addEventListener("click", moveTenant);
+    document.getElementById("deleteTenantBtn").addEventListener("click", deleteTenant);
+
+    // Event delegation to mark requests as complete
+    document.getElementById("requestsOutput").addEventListener("click", (event) => {
+      if (event.target.classList.contains("mark-complete")) {
+        const requestId = event.target.getAttribute("data-id");
+        markRequestComplete(requestId);
+      }
+    });
+  </script>
+</body>
+</html>
